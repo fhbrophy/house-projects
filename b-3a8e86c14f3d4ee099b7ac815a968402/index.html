@@ -9,7 +9,7 @@
 var TOPIC="hp-bri-b7f9850fce02e3d0db55baf8704e467b00ccdeabcb84ad5b";
 var NTFY="https://ntfy.sh/"+TOPIC;
 var log=document.getElementById("log"),st=document.getElementById("status"),f=document.getElementById("f"),t=document.getElementById("t"),b=document.getElementById("b");
-var lastSig="";
+var lastSig="",sent=[];
 function fmt(s){var d=new Date(s*1000);return d.toLocaleString([], {month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});}
 function render(msgs){
   var sig=JSON.stringify(msgs);if(sig===lastSig)return;lastSig=sig;
@@ -42,7 +42,7 @@ function refresh(){
     var since=cursor?Math.max(cursor,Math.floor(Date.now()/1000)-43200):"12h";
     return getPending(since).then(function(p){
       var seen={};msgs.forEach(function(m){seen[m.id]=1;});
-      p.forEach(function(m){if(!seen[m.id]&&m.time>cursor){msgs.push(m);seen[m.id]=1;}});
+      p.concat(sent).forEach(function(m){if(!seen[m.id]&&m.time>cursor){msgs.push(m);seen[m.id]=1;}});
       msgs.sort(function(a,b){return a.time-b.time;});
       render(msgs);st.textContent="Updated "+new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit"});
     });
@@ -53,7 +53,7 @@ f.addEventListener("submit",function(e){
   b.disabled=true;st.textContent="Sending…";
   fetch(NTFY,{method:"POST",body:v}).then(function(r){
     if(!r.ok)throw new Error("HTTP "+r.status);
-    t.value="";t.style.height="";return refresh();
+    return r.json().catch(function(){return null;}).then(function(e){if(e&&e.id)sent.push({id:e.id,from:"brielle",time:e.time,text:e.message||v,pending:true});t.value="";t.style.height="";return refresh();});
   }).then(function(){st.textContent="Sent ✓";}).catch(function(err){st.textContent="Couldn't send ("+err.message+"). Please try again.";}).then(function(){b.disabled=false;});
 });
 t.addEventListener("input",function(){t.style.height="auto";t.style.height=Math.min(t.scrollHeight,140)+"px";});
