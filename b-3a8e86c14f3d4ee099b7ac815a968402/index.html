@@ -1,0 +1,64 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex,nofollow,noarchive"><meta name="referrer" content="no-referrer"><title>House ideas · chat with Hank</title>
+<style>*{box-sizing:border-box}html,body{height:100%}body{font-family:system-ui,sans-serif;margin:0;background:#f6f4ef;color:#222;display:flex;flex-direction:column}header{background:#3c6e47;color:#fff;padding:12px 16px;padding-top:max(12px,env(safe-area-inset-top))}header h1{margin:0;font-size:1.15rem}header p{margin:2px 0 0;font-size:.82rem;opacity:.85}#log{flex:1;overflow-y:auto;padding:12px;max-width:760px;width:100%;margin:0 auto}.msg{max-width:82%;margin:8px 0;padding:9px 12px;border-radius:16px;line-height:1.4;font-size:1rem;white-space:pre-wrap;word-wrap:break-word;box-shadow:0 1px 2px #0002}.me{background:#3c6e47;color:#fff;margin-left:auto;border-bottom-right-radius:4px}.hank{background:#fff;border-bottom-left-radius:4px}.meta{display:block;font-size:.7rem;opacity:.7;margin-top:4px}.empty{color:#777;text-align:center;padding:30px 10px;font-size:.95rem}form{display:flex;gap:8px;padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom));background:#fff;border-top:1px solid #ddd;max-width:760px;width:100%;margin:0 auto}textarea{flex:1;font:inherit;font-size:16px;padding:10px 12px;border:1px solid #ccc;border-radius:20px;resize:none;max-height:140px;min-height:44px}button{background:#3c6e47;color:#fff;border:0;border-radius:22px;padding:0 18px;font-size:1rem;font-weight:600;min-height:44px}button:disabled{opacity:.5}#status{text-align:center;font-size:.75rem;color:#888;padding:2px 0 0}</style></head>
+<body><header><h1>🏠 House project ideas</h1><p>Send ideas to Hank. Replies show up here (checks every 30 seconds).</p></header>
+<div id="log"><p class="empty">Loading…</p></div>
+<div id="status"></div>
+<form id="f"><textarea id="t" rows="1" maxlength="3000" placeholder="Type an idea…" aria-label="Message"></textarea><button id="b" type="submit">Send</button></form>
+<script>
+(function(){
+var TOPIC="hp-bri-b7f9850fce02e3d0db55baf8704e467b00ccdeabcb84ad5b";
+var NTFY="https://ntfy.sh/"+TOPIC;
+var log=document.getElementById("log"),st=document.getElementById("status"),f=document.getElementById("f"),t=document.getElementById("t"),b=document.getElementById("b");
+var lastSig="";
+function fmt(s){var d=new Date(s*1000);return d.toLocaleString([], {month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});}
+function render(msgs){
+  var sig=JSON.stringify(msgs);if(sig===lastSig)return;lastSig=sig;
+  var atBottom=log.scrollHeight-log.scrollTop-log.clientHeight<80;
+  log.textContent="";
+  if(!msgs.length){var p=document.createElement("p");p.className="empty";p.textContent="No messages yet. Send Hank your first idea!";log.appendChild(p);return;}
+  msgs.forEach(function(m){
+    var d=document.createElement("div");d.className="msg "+(m.from==="hank"?"hank":"me");
+    d.appendChild(document.createTextNode(m.text));
+    var s=document.createElement("span");s.className="meta";
+    s.textContent=(m.from==="hank"?"Hank · ":"")+fmt(m.time)+(m.pending?" · sent, Hank hasn't picked it up yet":"");
+    d.appendChild(s);log.appendChild(d);
+  });
+  if(atBottom||!log.dataset.init){log.scrollTop=log.scrollHeight;log.dataset.init="1";}
+}
+function getThread(){
+  return fetch("thread.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.json():{messages:[]};}).catch(function(){return {messages:[]};});
+}
+function getPending(since){
+  return fetch(NTFY+"/json?poll=1&since="+since,{cache:"no-store"}).then(function(r){return r.ok?r.text():"";}).then(function(txt){
+    return txt.split("\n").filter(Boolean).map(function(l){try{return JSON.parse(l);}catch(e){return null;}})
+      .filter(function(e){return e&&e.event==="message"&&typeof e.message==="string";})
+      .map(function(e){return {id:e.id,from:"brielle",time:e.time,text:e.message,pending:true};});
+  }).catch(function(){return [];});
+}
+function refresh(){
+  return getThread().then(function(th){
+    var msgs=(th&&Array.isArray(th.messages))?th.messages:[];
+    var cursor=(th&&th.fetched_through)||0;
+    var since=cursor?Math.max(cursor,Math.floor(Date.now()/1000)-43200):"12h";
+    return getPending(since).then(function(p){
+      var seen={};msgs.forEach(function(m){seen[m.id]=1;});
+      p.forEach(function(m){if(!seen[m.id]&&m.time>cursor){msgs.push(m);seen[m.id]=1;}});
+      msgs.sort(function(a,b){return a.time-b.time;});
+      render(msgs);st.textContent="Updated "+new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit"});
+    });
+  });
+}
+f.addEventListener("submit",function(e){
+  e.preventDefault();var v=t.value.trim();if(!v)return;
+  b.disabled=true;st.textContent="Sending…";
+  fetch(NTFY,{method:"POST",body:v}).then(function(r){
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    t.value="";t.style.height="";return refresh();
+  }).then(function(){st.textContent="Sent ✓";}).catch(function(err){st.textContent="Couldn't send ("+err.message+"). Please try again.";}).then(function(){b.disabled=false;});
+});
+t.addEventListener("input",function(){t.style.height="auto";t.style.height=Math.min(t.scrollHeight,140)+"px";});
+t.addEventListener("keydown",function(e){if(e.key==="Enter"&&!e.shiftKey&&window.matchMedia("(pointer:fine)").matches){e.preventDefault();f.requestSubmit();}});
+refresh();setInterval(refresh,30000);
+document.addEventListener("visibilitychange",function(){if(!document.hidden)refresh();});
+})();
+</script></body></html>
